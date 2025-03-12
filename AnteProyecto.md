@@ -100,3 +100,6 @@ Además, se organizan torneos anuales en toda Canarias para potenciar la visibil
 - `puntos`
 - `posición`
 
+## Figma
+Un figma basico para ver la aplicación
+![Canary Esports](https://github.com/user-attachments/assets/ee808ce1-8067-488d-af83-10744775947b)
