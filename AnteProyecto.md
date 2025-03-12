@@ -58,3 +58,45 @@ Además, se organizan torneos anuales en toda Canarias para potenciar la visibil
 - `email`
 - `contraseña`
 - `rol` (Jugador / Moderador)
+
+#### Relaciones:
+- Un usuario puede pertenecer a un equipo (`id_equipo` FK, opcional).
+- Un usuario puede inscribirse en torneos (`id_torneo` FK, relación M:N).
+- Un usuario puede ser moderador (gestiona equipos y torneos).
+
+### 2. Equipo
+- `id_equipo` (PK)
+- `nombre`
+- `fundador` (FK → `id_usuario`)
+- `fecha_creacion`
+
+#### Relaciones:
+- Un equipo tiene varios jugadores (relación 1:N con Usuario).
+- Un equipo puede participar en torneos (`id_torneo` FK, relación M:N).
+
+### 3. Torneo
+- `id_torneo` (PK)
+- `nombre`
+- `fecha_inicio`
+- `fecha_fin`
+- `ubicación`
+
+#### Relaciones:
+- Un torneo puede tener varios equipos y jugadores inscritos (relación M:N con Usuario y Equipo).
+
+### 4. Juego
+- `id_juego` (PK)
+- `nombre`
+- `descripción`
+- `plataforma` (PC, PS5, Xbox, etc.)
+
+#### Relaciones:
+- Un torneo está asociado a un juego (`id_juego` FK).
+
+### 5. Clasificación
+- `id_clasificacion` (PK)
+- `id_torneo` (FK → Torneo)
+- `id_equipo` o `id_usuario` (FK, dependiendo del tipo de torneo)
+- `puntos`
+- `posición`
+
