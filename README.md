@@ -5,9 +5,10 @@ Es una plataforma multiplataforma desarrollada en Kotlin que permite a los jóve
 Además, se organizan torneos anuales en toda Canarias para potenciar la visibilidad de los jugadores y equipos destacados.
 
 ## Tecnologías Utilizadas
-- **Backend:** Kotlin  
+- **Backend:** Pycharn
+- **Frontend** kotlin  
 - **Base de Datos:** PostgreSQL (gestionado con PGAdmin)  
-- **IDE:** IntelliJ IDEA  
+- **IDE:** IntelliJ IDEA y Pycharm   
 - **Servicios y API:** Desarrollados en PyCharm  
 
 ## Roles de Usuario
