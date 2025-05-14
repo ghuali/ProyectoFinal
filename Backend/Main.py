@@ -1,150 +1,165 @@
 from flask import Flask, request, jsonify
 import psycopg2
-from psycopg2.extras import RealDictCursor
+import psycopg2.extras
 
 app = Flask(__name__)
 
-def ejecutar_sql(sql_text, params=None, fetch=True):
-    conn = psycopg2.connect(
+# Conexión a PostgreSQL
+def conectar():
+    return psycopg2.connect(
         host="localhost",
-        port="5432",
-        dbname="EsportsCanarias",
+        database="alexsoft",
         user="postgres",
-        password="postgres"
+        password="1234"
     )
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-    cursor.execute(sql_text, params)
+# Ejecutar SQL y devolver JSON
+def ejecutar_sql(sql):
+    try:
+        conn = conectar()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(sql)
 
-    if not fetch:
-        conn.commit()
-        cursor.close()
-        conn.close()
-        return jsonify({"msg": "Operación exitosa"})
+        if sql.strip().lower().startswith("select"):
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+            return jsonify(rows)
+        else:
+            conn.commit()
+            cur.close()
+            conn.close()
+            return jsonify({"msg": "Operación exitosa"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-    filas = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return jsonify(filas)
-
-# -----------------------
-# AUTENTICACIÓN
-# -----------------------
-
-@app.route('/login', methods=['POST'])
-def login():
+# Login
+@app.route('/usuario/login', methods=['POST'])
+def login_usuario():
     data = request.json
-    email = data.get('email')
-    password = data.get('contraseña')
+    email = data['email']
+    contrasena = data['contraseña']
+    sql = f'''SELECT * FROM "Usuario" WHERE email = '{email}' AND contraseña = '{contrasena}' '''
+    result = ejecutar_sql(sql)
+    if result.status_code != 200 or not result.json:
+        return jsonify({"msg": "Credenciales inválidas"}), 401
+    usuario = result.json[0]
+    return jsonify({
+        "id": usuario["id_usuario"],
+        "nombre": usuario["nombre"],
+        "rol": usuario["rol"],
+        "email": usuario["email"]
+    })
 
-    resultado = ejecutar_sql("""
-        SELECT * FROM "Usuario"
-        WHERE email = %s AND contraseña = %s
-    """, (email, password))
-
-    if resultado.json:
-        return resultado
-    else:
-        return jsonify({"msg": "Login incorrecto"}), 401
-
-# -----------------------
-# USUARIOS
-# -----------------------
-
-@app.route('/usuarios', methods=['GET'])
-def obtener_usuarios():
-    return ejecutar_sql('SELECT * FROM "Usuario" ORDER BY id_usuario ASC')
-
-@app.route('/usuario', methods=['POST'])
-def nuevo_usuario():
+# Registro
+@app.route('/usuario/registro', methods=['POST'])
+def registro_usuario():
     data = request.json
-    return ejecutar_sql("""
+    nombre = data['nombre']
+    email = data['email']
+    contraseña = data['contraseña']
+    rol = data['rol']
+    sql = f'''
         INSERT INTO "Usuario" (nombre, email, contraseña, rol)
-        VALUES (%s, %s, %s, %s)
-    """, (data['nombre'], data['email'], data['contraseña'], data['rol']), fetch=False)
+        VALUES ('{nombre}', '{email}', '{contraseña}', '{rol}')
+    '''
+    return ejecutar_sql(sql)
 
-# -----------------------
-# EQUIPOS
-# -----------------------
+# Juegos por equipos
+@app.route('/juegos/equipos', methods=['GET'])
+def juegos_por_equipos():
+    return ejecutar_sql('''SELECT * FROM "Juego" WHERE es_individual = FALSE''')
 
-@app.route('/equipos', methods=['GET'])
-def obtener_equipos():
-    return ejecutar_sql('SELECT * FROM "Equipo" ORDER BY id_equipo ASC')
-
-@app.route('/equipo', methods=['POST'])
-def nuevo_equipo():
-    data = request.json
-    return ejecutar_sql("""
-        INSERT INTO "Equipo" (nombre, fundador, fecha_creacion)
-        VALUES (%s, %s, %s)
-    """, (data['nombre'], data['fundador'], data['fecha_creacion']), fetch=False)
-
-# -----------------------
-# TORNEOS
-# -----------------------
-
-@app.route('/torneos', methods=['GET'])
-def obtener_torneos():
-    return ejecutar_sql("""
-        SELECT t.*, j.nombre AS nombre_juego, e.nombre AS nombre_evento
+# Torneos activos
+@app.route('/torneos/activos', methods=['GET'])
+def torneos_activos():
+    return ejecutar_sql('''
+        SELECT t.id_torneo, t.nombre AS torneo, t.fecha_inicio, t.fecha_fin,
+               j.nombre AS juego, e.nombre AS evento, e.tipo, e.año
         FROM "Torneo" t
-        JOIN "Juego" j ON t.id_juego = j.id_juego
-        JOIN "Evento" e ON t.id_evento = e.id_evento
-        ORDER BY t.id_torneo ASC
-    """)
+        INNER JOIN "Juego" j ON t.id_juego = j.id_juego
+        INNER JOIN "Evento" e ON t.id_evento = e.id_evento
+        WHERE t.fecha_fin >= CURRENT_DATE
+        ORDER BY t.fecha_inicio ASC
+    ''')
 
-# -----------------------
-# CLASIFICACIÓN
-# -----------------------
-
-@app.route('/clasificacion/<int:id_torneo>', methods=['GET'])
-def clasificacion_torneo(id_torneo):
-    return ejecutar_sql("""
-        SELECT c.*, u.nombre AS nombre_usuario, eq.nombre AS nombre_equipo
+# Clasificación de torneo
+@app.route('/torneo/clasificacion', methods=['GET'])
+def clasificacion_torneo():
+    torneo_id = request.args.get('id')
+    return ejecutar_sql(f'''
+        SELECT c.id_clasificacion, c.puntos, c.posicion,
+               u.nombre AS usuario, eq.nombre AS equipo
         FROM "Clasificacion" c
         LEFT JOIN "Usuario" u ON c.id_usuario = u.id_usuario
         LEFT JOIN "Equipo" eq ON c.id_equipo = eq.id_equipo
-        WHERE c.id_torneo = %s
+        WHERE c.id_torneo = {torneo_id}
         ORDER BY c.posicion ASC
-    """, (id_torneo,))
+    ''')
 
-@app.route('/clasificacion', methods=['POST'])
-def nueva_clasificacion():
+# Crear equipo
+@app.route('/equipo/crear', methods=['POST'])
+def crear_equipo():
     data = request.json
-    return ejecutar_sql("""
-        INSERT INTO "Clasificacion" (id_torneo, id_equipo, id_usuario, puntos, posicion)
-        VALUES (%s, %s, %s, %s, %s)
-    """, (
-        data['id_torneo'],
-        data.get('id_equipo'),
-        data.get('id_usuario'),
-        data['puntos'],
-        data['posicion']
-    ), fetch=False)
+    nombre = data['nombre']
+    fundador = data['fundador']  # ID del usuario
+    fecha = data['fecha_creacion']
+    return ejecutar_sql(f'''
+        INSERT INTO "Equipo" (nombre, fundador, fecha_creacion)
+        VALUES ('{nombre}', {fundador}, '{fecha}')
+    ''')
 
-# -----------------------
-# EVENTOS y JUEGOS
-# -----------------------
-
-@app.route('/eventos', methods=['GET'])
-def obtener_eventos():
-    return ejecutar_sql('SELECT * FROM "Evento" ORDER BY año DESC, tipo ASC')
-
-@app.route('/juegos', methods=['GET'])
-def obtener_juegos():
-    return ejecutar_sql('SELECT * FROM "Juego" ORDER BY id_juego ASC')
-
-@app.route('/juego', methods=['POST'])
-def nuevo_juego():
+# Añadir usuario a equipo
+@app.route('/equipo/unir', methods=['POST'])
+def unir_equipo():
     data = request.json
-    return ejecutar_sql("""
-        INSERT INTO "Juego" (nombre, descripcion, plataforma, es_individual)
-        VALUES (%s, %s, %s, %s)
-    """, (data['nombre'], data['descripcion'], data['plataforma'], data['es_individual']), fetch=False)
+    usuario_id = data['usuario_id']
+    equipo_id = data['equipo_id']
+    return ejecutar_sql(f'''
+        INSERT INTO "UsuarioEquipo" (usuario_id, equipo_id)
+        VALUES ({usuario_id}, {equipo_id})
+    ''')
 
-# -----------------------
-# INICIALIZACIÓN
-# -----------------------
+# Crear torneo
+@app.route('/torneo/crear', methods=['POST'])
+def crear_torneo():
+    d = request.json
+    return ejecutar_sql(f'''
+        INSERT INTO "Torneo" (nombre, fecha_inicio, fecha_fin, ubicacion, id_juego, id_evento)
+        VALUES ('{d['nombre']}', '{d['fecha_inicio']}', '{d['fecha_fin']}', '{d['ubicacion']}', {d['id_juego']}, {d['id_evento']})
+    ''')
+
+# Participar en torneo
+@app.route('/torneo/unir', methods=['POST'])
+def unir_torneo():
+    d = request.json
+    if d['tipo'] == 'equipo':
+        return ejecutar_sql(f'''
+            INSERT INTO "EquipoTorneo" (equipo_id, torneo_id)
+            VALUES ({d['id']}, {d['torneo_id']})
+        ''')
+    else:
+        return ejecutar_sql(f'''
+            INSERT INTO "UsuarioTorneo" (usuario_id, torneo_id)
+            VALUES ({d['id']}, {d['torneo_id']})
+        ''')
+
+# Añadir clasificación
+@app.route('/torneo/clasificacion', methods=['POST'])
+def crear_clasificacion():
+    d = request.json
+    campos = "id_torneo, puntos, posicion"
+    valores = f"{d['id_torneo']}, {d['puntos']}, {d['posicion']}"
+    if d['tipo'] == 'equipo':
+        campos += ", id_equipo"
+        valores += f", {d['id']}"
+    else:
+        campos += ", id_usuario"
+        valores += f", {d['id']}"
+    return ejecutar_sql(f'''
+        INSERT INTO "Clasificacion" ({campos})
+        VALUES ({valores})
+    ''')
 
 if __name__ == '__main__':
     app.run(debug=True)
