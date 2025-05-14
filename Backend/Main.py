@@ -8,7 +8,8 @@ app = Flask(__name__)
 def conectar():
     return psycopg2.connect(
         host="localhost",
-        database="alexsoft",
+        port="5432",
+        database="EsportsCanarias",
         user="postgres",
         password="1234"
     )
@@ -33,7 +34,6 @@ def ejecutar_sql(sql):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Login
 @app.route('/usuario/login', methods=['POST'])
 def login_usuario():
     data = request.json
@@ -51,7 +51,6 @@ def login_usuario():
         "email": usuario["email"]
     })
 
-# Registro
 @app.route('/usuario/registro', methods=['POST'])
 def registro_usuario():
     data = request.json
@@ -65,12 +64,10 @@ def registro_usuario():
     '''
     return ejecutar_sql(sql)
 
-# Juegos por equipos
 @app.route('/juegos/equipos', methods=['GET'])
 def juegos_por_equipos():
     return ejecutar_sql('''SELECT * FROM "Juego" WHERE es_individual = FALSE''')
 
-# Torneos activos
 @app.route('/torneos/activos', methods=['GET'])
 def torneos_activos():
     return ejecutar_sql('''
@@ -83,7 +80,6 @@ def torneos_activos():
         ORDER BY t.fecha_inicio ASC
     ''')
 
-# Clasificación de torneo
 @app.route('/torneo/clasificacion', methods=['GET'])
 def clasificacion_torneo():
     torneo_id = request.args.get('id')
@@ -97,19 +93,17 @@ def clasificacion_torneo():
         ORDER BY c.posicion ASC
     ''')
 
-# Crear equipo
 @app.route('/equipo/crear', methods=['POST'])
 def crear_equipo():
     data = request.json
     nombre = data['nombre']
-    fundador = data['fundador']  # ID del usuario
+    fundador = data['fundador']
     fecha = data['fecha_creacion']
     return ejecutar_sql(f'''
         INSERT INTO "Equipo" (nombre, fundador, fecha_creacion)
         VALUES ('{nombre}', {fundador}, '{fecha}')
     ''')
 
-# Añadir usuario a equipo
 @app.route('/equipo/unir', methods=['POST'])
 def unir_equipo():
     data = request.json
@@ -120,7 +114,6 @@ def unir_equipo():
         VALUES ({usuario_id}, {equipo_id})
     ''')
 
-# Crear torneo
 @app.route('/torneo/crear', methods=['POST'])
 def crear_torneo():
     d = request.json
@@ -129,7 +122,6 @@ def crear_torneo():
         VALUES ('{d['nombre']}', '{d['fecha_inicio']}', '{d['fecha_fin']}', '{d['ubicacion']}', {d['id_juego']}, {d['id_evento']})
     ''')
 
-# Participar en torneo
 @app.route('/torneo/unir', methods=['POST'])
 def unir_torneo():
     d = request.json
@@ -144,7 +136,6 @@ def unir_torneo():
             VALUES ({d['id']}, {d['torneo_id']})
         ''')
 
-# Añadir clasificación
 @app.route('/torneo/clasificacion', methods=['POST'])
 def crear_clasificacion():
     d = request.json
@@ -160,6 +151,72 @@ def crear_clasificacion():
         INSERT INTO "Clasificacion" ({campos})
         VALUES ({valores})
     ''')
+
+@app.route('/eventos', methods=['GET'])
+def obtener_eventos():
+    return ejecutar_sql('''SELECT * FROM "Evento" ORDER BY año DESC, tipo ASC''')
+
+@app.route('/juegos', methods=['GET'])
+def obtener_juegos():
+    return ejecutar_sql('''SELECT * FROM "Juego" ORDER BY nombre''')
+
+@app.route('/usuario/equipos', methods=['GET'])
+def equipos_usuario():
+    usuario_id = request.args.get('id')
+    return ejecutar_sql(f'''
+        SELECT e.id_equipo, e.nombre, e.fecha_creacion
+        FROM "Equipo" e
+        INNER JOIN "UsuarioEquipo" ue ON ue.equipo_id = e.id_equipo
+        WHERE ue.usuario_id = {usuario_id}
+    ''')
+
+@app.route('/usuario/torneos', methods=['GET'])
+def torneos_usuario():
+    usuario_id = request.args.get('id')
+    return ejecutar_sql(f'''
+        SELECT t.id_torneo, t.nombre, t.fecha_inicio, t.fecha_fin
+        FROM "Torneo" t
+        INNER JOIN "UsuarioTorneo" ut ON ut.torneo_id = t.id_torneo
+        WHERE ut.usuario_id = {usuario_id}
+        ORDER BY t.fecha_inicio DESC
+    ''')
+
+@app.route('/equipo/torneos', methods=['GET'])
+def torneos_equipo():
+    equipo_id = request.args.get('id')
+    return ejecutar_sql(f'''
+        SELECT t.id_torneo, t.nombre, t.fecha_inicio, t.fecha_fin
+        FROM "Torneo" t
+        INNER JOIN "EquipoTorneo" et ON et.torneo_id = t.id_torneo
+        WHERE et.equipo_id = {equipo_id}
+        ORDER BY t.fecha_inicio DESC
+    ''')
+
+@app.route('/equipo/miembros', methods=['GET'])
+def miembros_equipo():
+    equipo_id = request.args.get('id')
+    return ejecutar_sql(f'''
+        SELECT u.id_usuario, u.nombre, u.email
+        FROM "Usuario" u
+        INNER JOIN "UsuarioEquipo" ue ON ue.usuario_id = u.id_usuario
+        WHERE ue.equipo_id = {equipo_id}
+    ''')
+
+@app.route('/torneo/participantes', methods=['GET'])
+def participantes_torneo():
+    torneo_id = request.args.get('id')
+    return ejecutar_sql(f'''
+        SELECT 'equipo' AS tipo, e.id_equipo AS id, e.nombre
+        FROM "Equipo" e
+        INNER JOIN "EquipoTorneo" et ON et.equipo_id = e.id_equipo
+        WHERE et.torneo_id = {torneo_id}
+        UNION
+        SELECT 'usuario' AS tipo, u.id_usuario AS id, u.nombre
+        FROM "Usuario" u
+        INNER JOIN "UsuarioTorneo" ut ON ut.usuario_id = u.id_usuario
+        WHERE ut.torneo_id = {torneo_id}
+    ''')
+
 
 if __name__ == '__main__':
     app.run(debug=True)
